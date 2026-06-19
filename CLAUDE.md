@@ -1,34 +1,46 @@
-# CLAUDE.md
+# CLAUDE.md — Northwind Logistics / Spring Music Modernisation
 
-## Your role in this repo
+## Project context
 
-you support a group of people in a hackathon. The aim is to solve the tasks you get very precisely.
+Spring Music is a Spring Boot 2.4 monolith being decomposed via **Strangler Fig**.
+Full rationale and risk ranking: `docs/adr/ADR-001-decomposition-plan.md`.
 
-The Tasks:"The Monolith"
+Goal: prove the monolith can be evolved safely **without a big-bang rewrite**.
 
-Northwind Logistics runs on something old. It works, mostly, but the people who built it are gone, the docs are a folder of outdated Word files, and the board just approved "modernization" without defining what that means. Prove it can be evolved safely without a big-bang rewrite.
+## Codebase structure
 
-You pick the language, the era, the architecture, the decomposition strategy. The only rule: generate something ugly enough that fixing it is interesting.
-
----
-
-## Project conventions
-
-- **Monolith:** `spring-music/` — Spring Boot 2.4, multi-backend (H2/MySQL/Postgres/MongoDB/Redis via profiles)
-- **New service:** `album-catalog-service/` — clean extraction of the album domain (Postgres/JPA only)
-- **Decomposition strategy:** Strangler Fig — see `docs/adr/ADR-001-decomposition-plan.md`
-- **Preferred service for album operations:** use `album-catalog-service`, not the monolith, for any new album logic
-
-## Boundaries (do not cross)
-
-- Do **not** add new features to `spring-music/` — only characterisation-safe changes allowed
-- The `album-catalog-service` public API must **not** expose monolith-internal field names (e.g. `albumId`)
-- Do **not** import monolith packages into `album-catalog-service`
+| Directory | Role |
+|---|---|
+| `spring-music/` | Legacy monolith — Spring Boot 2.4, multi-backend (H2/MySQL/Postgres/MongoDB/Redis via Spring profiles) |
+| `album-catalog-service/` | Extracted album domain — Postgres/JPA only, clean REST contract |
+| `docs/adr/` | Architecture Decision Records |
 
 ## Extraction phases
 
-1. Phase 0 — Characterisation tests (pin monolith behaviour before any changes)
-2. Phase 1 — Extract `album-catalog-service` with clean REST contract
-3. Phase 2 — Anti-Corruption Layer + CI boundary check
-4. Phase 3 — Gateway routing, deprecate monolith `/albums` endpoint
+| Phase | Name | Status |
+|---|---|---|
+| 0 | **The Pin** — characterisation tests that pin monolith behaviour (bugs included) | ⏳ |
+| 1 | **The Cut** — extract `album-catalog-service` with clean REST contract | ⏳ |
+| 2 | **The Fence** — Anti-Corruption Layer + CI check that fails on banned field names | ⏳ |
+| 3 | Gateway routing — deprecate monolith `/albums` endpoint | ⏳ |
+
+## Boundaries (hard rules — never cross)
+
+- Do **not** add new features to `spring-music/` — only characterisation-safe changes
+- The `album-catalog-service` public API must **not** expose monolith-internal field names (`albumId`, `trackCount` as int)
+- Do **not** import any class from `org.cloudfoundry.samples.music.*` into `album-catalog-service`
+
+## Preferences (soft rules — follow unless there is a documented reason not to)
+
+- For any new album logic, prefer `album-catalog-service` over the monolith
+- Before changing any behaviour in `spring-music/`, there must be a characterisation test that captures the existing behaviour first
+- A failing characterisation test after a change = unintended behaviour change → revert first, investigate second
+
+## Three-level CLAUDE.md
+
+| Level | File | Purpose |
+|---|---|---|
+| Project | `/CLAUDE.md` ← this file | Codebase conventions, seam boundaries, extraction phase status |
+| Monolith | `/spring-music/CLAUDE.md` | Legacy rules: no new features, known issues, test strategy |
+| New service | `/album-catalog-service/CLAUDE.md` | No monolith field names in public API; API contract |
 
