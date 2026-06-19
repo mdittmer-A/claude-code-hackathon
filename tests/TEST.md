@@ -1,7 +1,22 @@
 # Spring Music — Test Cases (mapped to User Stories)
 
 > Each test traces back to a user story (US-xx) or to a system behavior not covered by stories.  
-> Open disagreements (D-xx) are flagged — tests may need updating once resolved.
+> Architecture decision: **Strangler Fig** — new `album-catalog-service` (Postgres/JPA) extracts `/albums` CRUD.  
+> Tests cover both the **monolith** (characterization) and the **new service** (contract).
+
+### Resolved Decisions
+
+| ID | Resolution | Impact |
+|----|-----------|--------|
+| D-02 | Multi-backend **dropped** — new service is Postgres-only | Monolith DB profile tests become legacy-only (N/A for new service) |
+| D-03 | No auth for now (internal tool) | No auth tests needed yet |
+
+### Still Open
+
+| ID | Issue | Tests Affected |
+|----|-------|---------------|
+| D-01 | Confirm before delete? | T-05.1 (may need confirmation step) |
+| D-04 | trackCount in form? | T-03.1, T-03.2 (form field list) |
 
 ---
 
@@ -119,19 +134,19 @@
 | T-SYS.11 | No re-seeding | Restart with existing data | No duplicates, count unchanged | [ ] |
 | T-SYS.12 | Seed data content | Check against SEED_DATA_REFERENCE.md | All 29 albums match exactly | [ ] |
 
-### Database Profiles
+### Database Profiles (Monolith — legacy only)
 
-| # | Test Case | Steps | Expected Result | Status |
-|---|-----------|-------|-----------------|--------|
-| T-SYS.13 | Default (no profile) | Start without profile | H2 in-memory DB, app works | [ ] |
-| T-SYS.14 | MySQL profile | Start with `-Dspring.profiles.active=mysql` | Connects to MySQL | [ ] |
-| T-SYS.15 | Postgres profile | Start with `-Dspring.profiles.active=postgres` | Connects to PostgreSQL | [ ] |
-| T-SYS.16 | MongoDB profile | Start with `-Dspring.profiles.active=mongodb` | Uses MongoDB | [ ] |
-| T-SYS.17 | Redis profile | Start with `-Dspring.profiles.active=redis` | Uses Redis | [ ] |
-| T-SYS.18 | Multiple profiles fail | Start with two DB profiles | App fails with IllegalStateException | [ ] |
-| T-SYS.19 | Profile in appinfo | GET `/appinfo` | Active profile name in `profiles` array | [ ] |
+| # | Test Case | Steps | Expected Result | Applies To |
+|---|-----------|-------|-----------------|------------|
+| T-SYS.13 | Default (no profile) | Start without profile | H2 in-memory DB, app works | Monolith only |
+| T-SYS.14 | MySQL profile | Start with `-Dspring.profiles.active=mysql` | Connects to MySQL | Monolith only (N/A for new service) |
+| T-SYS.15 | Postgres profile | Start with `-Dspring.profiles.active=postgres` | Connects to PostgreSQL | Monolith + new service |
+| T-SYS.16 | MongoDB profile | Start with `-Dspring.profiles.active=mongodb` | Uses MongoDB | Monolith only (N/A for new service) |
+| T-SYS.17 | Redis profile | Start with `-Dspring.profiles.active=redis` | Uses Redis | Monolith only (N/A for new service) |
+| T-SYS.18 | Multiple profiles fail | Start with two DB profiles | App fails with IllegalStateException | Monolith only (N/A for new service) |
+| T-SYS.19 | Profile in appinfo | GET `/appinfo` | Active profile name in `profiles` array | Monolith only |
 
-> **D-02 (open):** Multi-backend support may be dropped. If dropped, T-SYS.14–T-SYS.18 become N/A.
+> **D-02 resolved:** Multi-backend dropped in new service. Tests T-SYS.14/16/17/18 are N/A for `album-catalog-service`.
 
 ### Navigation & Static Assets
 
@@ -152,32 +167,126 @@
 
 ---
 
+## Contract Tests — `album-catalog-service` (New Service)
+
+> These tests verify the new service behaves identically to the monolith for the `/albums` API.  
+> Per ADR-001: response shape must match monolith during transition (Phases 1–3).
+
+### API Contract — Equivalence
+
+| # | Test Case | Method | URL | Expected (must match monolith) | Status |
+|---|-----------|--------|-----|-------------------------------|--------|
+| T-CT.1 | List all albums | GET | `/albums` | JSON array, same structure as monolith | [ ] |
+| T-CT.2 | Get album by ID | GET | `/albums/{id}` | JSON object with: id, title, artist, releaseYear, genre, trackCount | [ ] |
+| T-CT.3 | Get non-existent album | GET | `/albums/{id}` | Same behavior as monolith (null/empty) | [ ] |
+| T-CT.4 | Create album | PUT | `/albums` | Returns album with generated ID, same JSON shape | [ ] |
+| T-CT.5 | Update album | POST | `/albums/{id}` | Returns updated album (note: URL includes `{id}` in new service) | [ ] |
+| T-CT.6 | Delete album | DELETE | `/albums/{id}` | HTTP 200, album removed | [ ] |
+| T-CT.7 | Validation error | PUT | `/albums` with empty body | HTTP 400 | [ ] |
+| T-CT.8 | Seed data loaded | Fresh start | 29 albums present, same content as monolith | [ ] |
+
+### Anti-Corruption Layer (Phase 2)
+
+| # | Test Case | Steps | Expected Result | Status |
+|---|-----------|-------|-----------------|--------|
+| T-ACL.1 | No `albumId` in response | GET `/albums`, inspect all fields | `albumId` field must NOT appear in response JSON | [ ] |
+| T-ACL.2 | No monolith internals leaked | Inspect OpenAPI/response schema | No fields from monolith that are not in public contract | [ ] |
+| T-ACL.3 | No monolith package imports | Grep `album-catalog-service` source | Zero imports of `org.cloudfoundry.samples.music.*` | [ ] |
+| T-ACL.4 | No CfEnv dependency | Check build file | No `java-cfenv` dependency | [ ] |
+
+### Response Shape Comparison
+
+| Field | Monolith | New Service | Rule |
+|-------|----------|-------------|------|
+| `id` | String (random, max 40) | String (random, max 40) | Must match |
+| `title` | String | String | Must match |
+| `artist` | String | String | Must match |
+| `releaseYear` | String | String | Must match |
+| `genre` | String | String | Must match |
+| `trackCount` | int (default 0) | int (default 0) | Must match |
+| `albumId` | String (always null) | **Must NOT appear** | Anti-corruption rule |
+
+### Transition Routing (Phase 3)
+
+| # | Test Case | Steps | Expected Result | Status |
+|---|-----------|-------|-----------------|--------|
+| T-RT.1 | Gateway routes /albums to new service | Call `/albums` through gateway | Response from album-catalog-service | [ ] |
+| T-RT.2 | Other paths stay on monolith | Call `/appinfo` through gateway | Response from monolith | [ ] |
+| T-RT.3 | Rollback: route back to monolith | Switch gateway rule | `/albums` served by monolith again, no data loss | [ ] |
+
+---
+
 ## Coverage Matrix
 
-| User Story | Test Cases | Count |
-|------------|-----------|-------|
+| Area | Test Cases | Count |
+|------|-----------|-------|
 | US-01 View catalog | T-01.1 – T-01.9 | 9 |
 | US-02 Switch layout | T-02.1 – T-02.5 | 5 |
 | US-03 Add album | T-03.1 – T-03.16 | 16 |
 | US-04 Edit album | T-04.1 – T-04.11 | 11 |
 | US-05 Delete album | T-05.1 – T-05.5 | 5 |
 | System behavior | T-SYS.1 – T-SYS.26 | 26 |
-| **Total** | | **72** |
+| Contract tests (new service) | T-CT.1 – T-CT.8 | 8 |
+| Anti-corruption layer | T-ACL.1 – T-ACL.4 | 4 |
+| Transition routing | T-RT.1 – T-RT.3 | 3 |
+| **Total** | | **87** |
 
 ---
 
-## Open Disagreements Impacting Tests
+## Test Execution Strategy by Phase
 
-| ID | Issue | Tests Affected | Action Needed |
-|----|-------|---------------|---------------|
-| D-01 | Confirm before delete? | T-05.1 (may need confirmation step) | Resolve → update US-05 tests |
-| D-02 | Drop multi-backend? | T-SYS.14–T-SYS.18 (may become N/A) | Resolve → mark N/A or keep |
-| D-03 | Auth/roles needed? | All US-03–05 tests (no auth today) | Resolve → add auth tests if yes |
-| D-04 | trackCount in form? | T-03.1, T-03.2 (form field list) | Resolve → add field to form tests |
+| Phase | What to run | Pass criteria |
+|-------|------------|---------------|
+| Phase 0 (Pin) | T-01 through T-SYS — all against monolith | All pass (baseline) |
+| Phase 1 (Extract) | T-CT.1–CT.8 against new service + full monolith suite still green | Both pass on same commit |
+| Phase 2 (ACL) | T-ACL.1–ACL.4 against new service | All pass — no monolith internals leak |
+| Phase 3 (Route) | T-RT.1–RT.3 + full suite through gateway | All pass — gateway routes correctly, rollback works |
+
+---
+
+---
+
+## Appendix A: Seed Data Reference (all 29 albums)
+
+| # | Artist | Title | Year | Genre |
+|---|--------|-------|------|-------|
+| 1 | Nirvana | Nevermind | 1991 | Rock |
+| 2 | The Beach Boys | Pet Sounds | 1966 | Rock |
+| 3 | Marvin Gaye | What's Going On | 1971 | Rock |
+| 4 | Jimi Hendrix Experience | Are You Experienced? | 1967 | Rock |
+| 5 | U2 | The Joshua Tree | 1987 | Rock |
+| 6 | The Beatles | Abbey Road | 1969 | Rock |
+| 7 | Fleetwood Mac | Rumours | 1977 | Rock |
+| 8 | Elvis Presley | Sun Sessions | 1976 | Rock |
+| 9 | Michael Jackson | Thriller | 1982 | Pop |
+| 10 | The Rolling Stones | Exile on Main Street | 1972 | Rock |
+| 11 | Bruce Springsteen | Born to Run | 1975 | Rock |
+| 12 | The Clash | London Calling | 1980 | Rock |
+| 13 | The Eagles | Hotel California | 1976 | Rock |
+| 14 | Led Zeppelin | Led Zeppelin | 1969 | Rock |
+| 15 | Led Zeppelin | IV | 1971 | Rock |
+| 16 | Police | Synchronicity | 1983 | Rock |
+| 17 | U2 | Achtung Baby | 1991 | Rock |
+| 18 | The Rolling Stones | Let it Bleed | 1969 | Rock |
+| 19 | The Beatles | Rubber Soul | 1965 | Rock |
+| 20 | The Ramones | The Ramones | 1976 | Rock |
+| 21 | Queen | A Night At The Opera | 1975 | Rock |
+| 22 | Boston | Don't Look Back | 1978 | Rock |
+| 23 | BB King | Singin' The Blues | 1956 | Blues |
+| 24 | Albert King | Born Under A Bad Sign | 1967 | Blues |
+| 25 | Muddy Waters | Folk Singer | 1964 | Blues |
+| 26 | The Fabulous Thunderbirds | Rock With Me | 1979 | Blues |
+| 27 | Robert Johnson | King of the Delta Blues | 1961 | Blues |
+| 28 | Stevie Ray Vaughan | Texas Flood | 1983 | Blues |
+| 29 | Stevie Ray Vaughan | Couldn't Stand The Weather | 1984 | Blues |
+
+**Genre counts:** Rock = 22, Pop = 1, Blues = 6  
+**Runtime defaults:** `id` = random string (max 40 chars), `trackCount` = 0, `albumId` = null  
+**Loading rule:** Only populates if DB is empty (`count() == 0`); no re-seeding on restart.
 
 ---
 
 **Tested by:** ___________________  
 **Date:** ___________________  
 **Version:** ___________________  
-**Result:** ___ / 72 Pass | ___ Fail | ___ N/A
+**Result:** ___ / 87 Pass | ___ Fail | ___ N/A
