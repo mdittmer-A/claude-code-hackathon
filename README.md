@@ -170,4 +170,75 @@ What worked. What surprised you. Where it saved the most time.
 
 ---
 
-**Pick a scenario. Start building.**
+## Our Work — Scenario 1: Code Modernization
+
+### Participants
+- (fill in names and roles)
+
+### What We Built
+
+A **Strangler Fig decomposition** of the Spring Music monolith into a clean `album-catalog-service`, with full characterization testing to guarantee behavioral equivalence.
+
+**What exists in this repo:**
+
+| Directory | What it is |
+|-----------|-----------|
+| `spring-music/` | The legacy monolith (unchanged) |
+| `album-catalog-service/` | Extracted album service — Postgres/JPA only, clean REST |
+| `docs/adr/` | ADR-001: Decomposition Plan |
+| `tests/` | 87 characterization + contract test cases (Jest + Playwright) |
+| `user-stories.md` | User stories with acceptance criteria and stakeholder disagreements |
+
+### Challenges Attempted
+
+| # | Challenge | Status | Notes |
+|---|-----------|--------|-------|
+| 1 | The Stories (PM) | Done | `user-stories.md` — 5 user stories, 4 open disagreements |
+| 2 | The Patient (Architect) | Done | Using BYO monolith (spring-music) |
+| 3 | The Map (Architect) | Done | `docs/adr/ADR-001-decomposition-plan.md` |
+| 4 | The Pin (Tester) | In progress | `tests/` — 87 test cases, automated API + UI suite |
+| 5 | The Cut (Dev) | Not started | `album-catalog-service/` has contract only |
+| 6 | The Fence (Dev/Tester) | Not started | ACL rules defined in CLAUDE.md |
+
+### Key Decisions
+
+1. **Strangler Fig over big-bang rewrite** — incremental extraction with gateway routing
+2. **Postgres-only for new service** — drops multi-backend complexity (Redis/Mongo/H2 profiles)
+3. **Characterization tests before any code change** — behavior-pinning, bugs included
+4. **Anti-corruption boundary** — `albumId` and `CfEnv` must never leak into new service
+5. **Three-level CLAUDE.md** — project, monolith, and service each get their own context
+
+See `docs/adr/ADR-001-decomposition-plan.md` for full rationale.
+
+### How to Run It
+
+```bash
+# Run the monolith
+cd spring-music
+./gradlew clean assemble
+java -jar build/libs/spring-music-1.0.jar
+# App at http://localhost:8080
+
+# Run characterization tests (requires monolith running)
+cd tests
+npm install
+npx playwright install   # one-time browser setup
+npx jest                 # API tests
+npx playwright test      # UI tests
+```
+
+### If We Had More Time
+
+1. Implement `album-catalog-service` (Phase 1 — The Cut)
+2. Add API gateway routing with rollback capability
+3. Automate ACL boundary checks in CI (grep for banned field names)
+4. Extract frontend SPA to static hosting
+5. Add contract tests that run both services side-by-side
+
+### How We Used Claude Code
+
+- **Tester role:** Claude explored the full monolith codebase and produced a complete behavior catalog (87 test cases) mapped to user stories
+- **Three-level CLAUDE.md:** Taught Claude the project boundaries so it respects extraction rules
+- **ADR generation:** Claude produced the decomposition plan with risk ranking and "what we chose NOT to do"
+- **Test automation:** Generated Jest + Playwright test suite from the specification
+

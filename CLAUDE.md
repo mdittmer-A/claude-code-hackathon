@@ -19,7 +19,7 @@ Goal: prove the monolith can be evolved safely **without a big-bang rewrite**.
 
 | Phase | Name | Status |
 |---|---|---|
-| 0 | **The Pin** — characterisation tests that pin monolith behaviour (bugs included) | ⏳ |
+| 0 | **The Pin** — characterisation tests that pin monolith behaviour (bugs included) | ✅ Done — `tests/TEST.md` (87 cases), automated in `tests/api/` and `tests/ui/` |
 | 1 | **The Cut** — extract `album-catalog-service` with clean REST contract | ⏳ |
 | 2 | **The Fence** — Anti-Corruption Layer + CI check that fails on banned field names | ⏳ |
 | 3 | Gateway routing — deprecate monolith `/albums` endpoint | ⏳ |
@@ -35,6 +35,18 @@ Goal: prove the monolith can be evolved safely **without a big-bang rewrite**.
 - For any new album logic, prefer `album-catalog-service` over the monolith
 - Before changing any behaviour in `spring-music/`, there must be a characterisation test that captures the existing behaviour first
 - A failing characterisation test after a change = unintended behaviour change → revert first, investigate second
+
+## Test suite
+
+| Location | Stack | What it covers |
+|----------|-------|---------------|
+| `tests/api/` | Jest + fetch | Album CRUD API, system endpoints, actuator, seed data |
+| `tests/ui/` | Playwright | UI views, sorting, add/edit/delete modals, inline editing, navigation |
+| `tests/TEST.md` | — | Full spec: 87 test cases mapped to user stories + contract tests |
+
+**Run:** `cd tests && npm install && npx jest && npx playwright test` (requires monolith running on :8080)
+
+**Rule:** Any change to `spring-music/` must not break the characterisation tests. Run them before and after.
 
 ## Three-level CLAUDE.md
 
