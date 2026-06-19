@@ -4,6 +4,38 @@
 > Architecture decision: **Strangler Fig** — new `album-catalog-service` (Postgres/JPA) extracts `/albums` CRUD.  
 > Tests cover both the **monolith** (characterization) and the **new service** (contract).
 
+## Readiness Overview
+
+| Section | Phase | Ready? | Blocker |
+|---------|-------|--------|---------|
+| US-01 – US-05 (UI tests) | 0 — Pin | **YES** | Run monolith locally |
+| T-SYS.1 – T-SYS.26 (system) | 0 — Pin | **YES** | Run monolith locally |
+| T-CT.1 – T-CT.8 (contract) | 1 — Extract | **NO** | `album-catalog-service` not yet implemented |
+| T-ACL.1 – T-ACL.4 (anti-corruption) | 2 — ACL | **NO** | Needs service + OpenAPI spec |
+| T-RT.1 – T-RT.3 (routing) | 3 — Route | **NO** | Needs API gateway setup |
+
+### How to Run (Phase 0 — now)
+
+```bash
+# 1. Build and start the monolith
+cd spring-music
+./gradlew clean assemble
+java -jar build/libs/spring-music-1.0.jar
+# App runs at http://localhost:8080
+
+# 2. Run automated tests (from tests/ directory)
+cd tests
+npm install
+npx jest                    # API tests (runs without browser)
+npx playwright test         # UI tests (launches browser)
+```
+
+### Test Stack
+
+- **API tests:** Jest + `node-fetch` — black-box HTTP calls against `/albums`, `/appinfo`, `/actuator`
+- **UI tests:** Playwright — browser automation for grid/list view, modals, inline editing
+- **Both run against:** `http://localhost:8080` (configurable via `BASE_URL` env var)
+
 ### Resolved Decisions
 
 | ID | Resolution | Impact |

@@ -1,0 +1,14 @@
+{
+  "name": "spring-music-tests",
+  "version": "1.0.0",
+  "description": "Characterization and contract tests for Spring Music",
+  "scripts": {
+    "test:api": "jest --testPathPattern=api/",
+    "test:ui": "playwright test",
+    "test": "jest --testPathPattern=api/ && playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.40.0",
+    "jest": "^29.7.0"
+  }
+}
